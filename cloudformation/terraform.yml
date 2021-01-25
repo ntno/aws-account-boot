@@ -1,16 +1,16 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >
   Template for creating S3 bucket and DynamoDB table to hold Terraform state and locks
-  Validate: aws cloudformation validate-template --template-body file://terraform_state.yml
+  Validate: aws cloudformation validate-template --template-body file://terraform.yml
   Deploy: aws cloudformation create-stack --region us-east-1 --stack-name Terraform-State-Resources --enable-termination-protection --template-body file://terraform_state.yml --parameters ParameterKey=TerraformStateBucketPrefix,ParameterValue=terraform-state ParameterKey=TerraformStateLockTableName,ParameterValue=terraform-state-locks
 Parameters:
   TerraformStateBucketPrefix:
     Type: String
-    Default: terraform-state
+    Default: tf-state
     Description: A prefix for S3 bucket name, account id will be added to ensure global uniqueness
   TerraformStateLockTableName:
     Type: String
-    Default: terraform-state-locks
+    Default: tf-state-locks
 
 Resources:
   TerraformStateS3Bucket:
