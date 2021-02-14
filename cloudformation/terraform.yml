@@ -41,11 +41,6 @@ Resources:
       Bucket: !Ref TerraformStateS3Bucket
       PolicyDocument:
         Statement:
-          - Sid: DenyDeletingTerraformStateFiles
-            Effect: Deny
-            Principal: "*"
-            Action: "s3:DeleteObject"
-            Resource: !Sub "arn:aws:s3:::${TerraformStateS3Bucket}/*"
           - Sid: DenyIncorrectEncryptionHeader
             Effect: Deny
             Principal: '*'
