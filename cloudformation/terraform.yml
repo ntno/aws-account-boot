@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  Template for creating S3 bucket and DynamoDB table to hold Terraform state and locks
+  Validate: aws cloudformation validate-template --template-body file://terraform.yml
+Parameters:
+  TerraformStateBucketPrefix:
+    Type: String
+    Default: tf-state
+    Description: A prefix for the S3 bucket name
+  TerraformStateLockTablePrefix:
+    Type: String
+    Default: tf-state-locks
+    Description: A prefix for the DynamoDB table name
+  Env:
+    Type: String
+    Default: dev
+    Description: The environment level (dev/stage/prod).  Used to separate resources in the same account.
+Resources:
+  TerraformStateS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${TerraformStateBucketPrefix}-${AWS::Region}-${Env}"
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  TerraformStateS3BucketBucketPolicy:
+    DependsOn:
+      - TerraformStateS3Bucket
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TerraformStateS3Bucket
+      PolicyDocument:
+        Statement:
+          - Sid: DenyDeletingTerraformStateFiles
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:DeleteObject"
+            Resource: !Sub "arn:aws:s3:::${TerraformStateS3Bucket}/*"
+          - Sid: DenyIncorrectEncryptionHeader
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${TerraformStateS3Bucket}/*'
+            Condition:
+              StringNotEquals:
+                's3:x-amz-server-side-encryption': AES256
+          - Sid: DenyUnEncryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${TerraformStateS3Bucket}/*'
+            Condition:
+              'Null':
+                's3:x-amz-server-side-encryption': True
+
+  TerraformStateLockDynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${TerraformStateLockTablePrefix}-${AWS::Region}-${Env}"
+      AttributeDefinitions:
+        - AttributeName: LockID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: LockID
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        # Add custom tags as CloudFormation is not able to add these unlike S3
+        - Key: aws-cloudformation-stack-id
+          Value: !Ref "AWS::StackId"
+        - Key: aws-cloudformation-stack-name
+          Value: !Ref "AWS::StackName"
+        - Key: aws-cloudformation-logical-id
+          Value: TerraformStateLockDynamoDBTable
+
