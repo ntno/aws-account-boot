@@ -2,21 +2,24 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: >
   Template for creating S3 bucket and DynamoDB table to hold Terraform state and locks
   Validate: aws cloudformation validate-template --template-body file://terraform.yml
-  Deploy: aws cloudformation create-stack --region us-east-1 --stack-name Terraform-State-Resources --enable-termination-protection --template-body file://terraform_state.yml --parameters ParameterKey=TerraformStateBucketPrefix,ParameterValue=terraform-state ParameterKey=TerraformStateLockTableName,ParameterValue=terraform-state-locks
 Parameters:
   TerraformStateBucketPrefix:
     Type: String
     Default: tf-state
-    Description: A prefix for S3 bucket name, account id will be added to ensure global uniqueness
-  TerraformStateLockTableName:
+    Description: A prefix for the S3 bucket name
+  TerraformStateLockTablePrefix:
     Type: String
     Default: tf-state-locks
-
+    Description: A prefix for the DynamoDB table name
+  Env:
+    Type: String
+    Default: dev
+    Description: The environment level (dev/stage/prod).  Used to separate resources in the same account.
 Resources:
   TerraformStateS3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${TerraformStateBucketPrefix}-${AWS::Region}-${AWS::AccountId}"
+      BucketName: !Sub "${TerraformStateBucketPrefix}-${AWS::Region}-${Env}"
       AccessControl: Private
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
@@ -43,11 +46,29 @@ Resources:
             Principal: "*"
             Action: "s3:DeleteObject"
             Resource: !Sub "arn:aws:s3:::${TerraformStateS3Bucket}/*"
+          - Sid: DenyIncorrectEncryptionHeader
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${TerraformStateS3Bucket}/*'
+            Condition:
+              StringNotEquals:
+                's3:x-amz-server-side-encryption': AES256
+          - Sid: DenyUnEncryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${TerraformStateS3Bucket}/*'
+            Condition:
+              'Null':
+                's3:x-amz-server-side-encryption': True
 
   TerraformStateLockDynamoDBTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Ref TerraformStateLockTableName
+      TableName: !Sub "${TerraformStateLockTablePrefix}-${AWS::Region}-${Env}"
       AttributeDefinitions:
         - AttributeName: LockID
           AttributeType: S
